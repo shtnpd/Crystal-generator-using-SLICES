@@ -2,11 +2,11 @@
 # Hang Xiao 2023.04
 # xiaohang07@live.cn
 import os,subprocess,random,warnings
-# os.environ["CUDA_VISIBLE_DEVICES"]=""
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
-os.environ["OMP_NUM_THREADS"] = "16"
+os.environ["OMP_NUM_THREADS"] = "8"
 os.environ["XTB_MOD_PATH"] = os.path.abspath(os.path.dirname(__file__))+"/xtb_noring_nooutput_nostdout_noCN"
 os.environ["PYTHONWARNINGS"]="ignore" 
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
@@ -44,6 +44,8 @@ import itertools
 import copy,sys
 import m3gnet.models
 import numba
+tf.config.threading.set_inter_op_parallelism_threads(0)
+tf.config.threading.set_intra_op_parallelism_threads(0)
 # tf.config.threading.set_inter_op_parallelism_threads(1)
 # tf.config.threading.set_intra_op_parallelism_threads(1)
 
@@ -65,7 +67,7 @@ def function_timeout(seconds: int):
         @contextmanager
         def time_limit(seconds_):
             def signal_handler(signum, frame):  # noqa
-                raise TimeoutException("Timed out!")  #TimeoutException
+                raise Exception("Timed out!")  #TimeoutException
             signal.signal(signal.SIGALRM, signal_handler)
             signal.alarm(seconds_)
             try:
@@ -102,7 +104,8 @@ class SLICES:
         """        
         tf.keras.backend.clear_session()
         gc.collect()
-        self.can_relax = relax_model != None
+        # self.can_relax = relax_model != None
+        self.can_relax = False
         self.atom_types = atom_types
         self.edge_indices = edge_indices
         self.to_jimages = to_jimages
@@ -2152,7 +2155,6 @@ class SLICES:
             start_time = end_time
             print(f"[15] Elapsed time: {elapsed:.4f} seconds")
 
-        self.can_relax = True
         if self.can_relax:
             try:
                 if num_nodes <= 20:
