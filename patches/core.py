@@ -2,11 +2,12 @@
 # Hang Xiao 2023.04
 # xiaohang07@live.cn
 import os,subprocess,random,warnings
-# os.environ["CUDA_VISIBLE_DEVICES"]=""
+os.environ["CUDA_VISIBLE_DEVICES"]=""
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
-os.environ["OMP_NUM_THREADS"] = "16"
+os.environ["OMP_NUM_THREADS"] = "8"
+os.environ["OPENBLAS_NUM_THREADS"] = "2"
 os.environ["XTB_MOD_PATH"] = os.path.abspath(os.path.dirname(__file__))+"/xtb_noring_nooutput_nostdout_noCN"
 os.environ["PYTHONWARNINGS"]="ignore" 
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
@@ -44,6 +45,8 @@ import itertools
 import copy,sys
 import m3gnet.models
 import numba
+tf.config.threading.set_inter_op_parallelism_threads(0)
+tf.config.threading.set_intra_op_parallelism_threads(0)
 # tf.config.threading.set_inter_op_parallelism_threads(1)
 # tf.config.threading.set_intra_op_parallelism_threads(1)
 
@@ -102,7 +105,9 @@ class SLICES:
         """        
         tf.keras.backend.clear_session()
         gc.collect()
-        self.can_relax = relax_model != None
+        # self.can_relax = relax_model != None
+        self.can_relax = False
+        self.last_val = 0
         self.atom_types = atom_types
         self.edge_indices = edge_indices
         self.to_jimages = to_jimages
@@ -116,7 +121,7 @@ class SLICES:
         self.relax_model=relax_model
         self.space_group_num = None
 
-        device = "cuda"
+        device = "cpu"
 
         # copy m3gnet model file?
         if self.relax_model=="chgnet":
@@ -414,7 +419,7 @@ class SLICES:
                     SLICES+='+'
         return SLICES
     @staticmethod
-    def get_slices3(atom_symbols,edge_indices,to_jimages):
+    def get_slices3(atom_symbols,edge_indices,to_jimages, space_group_num):
         SLICES=''
         for i in atom_symbols:
             SLICES+=i+' '
@@ -1634,125 +1639,253 @@ class SLICES:
         z = (c1[:, None, :] - c2[None, :, :]) ** 2
         return np.sum(z, axis=-1) ** 0.5
 
-    def func(self,x,ndim,order,mat_target,colattice_inds,colattice_weights, \
-        cycle_rep,cycle_cocycle_I,num_nodes,shortest_path,spanning,uncovered_pair, \
-        uncovered_pair_lj,covered_pair_lj,vbond_param_ave_covered,vbond_param_ave, \
-        lattice_vectors_scaled,structure_species,angle_weight,repul,lattice_type,metric_tensor_std):
-        """Objective function: sum squared differences between the inner products of the GFN-FF predicted 
-        geometry and the associated inner products (gjk) of the edges in the non-barycentric embedded net.
+    # def func(self,x,ndim,order,mat_target,colattice_inds,colattice_weights, \
+    #     cycle_rep,cycle_cocycle_I,num_nodes,shortest_path,spanning,uncovered_pair, \
+    #     uncovered_pair_lj,covered_pair_lj,vbond_param_ave_covered,vbond_param_ave, \
+    #     lattice_vectors_scaled,structure_species,angle_weight,repul,lattice_type,metric_tensor_std):
+    #     """Objective function: sum squared differences between the inner products of the GFN-FF predicted 
+    #     geometry and the associated inner products (gjk) of the edges in the non-barycentric embedded net.
 
-        Args:
-            x (np.array): Ndarray of metric tensor components and colattice vectors.
-            ndim (int): Dimensionality of crystal structure corresponding to the labeled quotient graph.
-            order (int): Number of nodes of the labeled quotient graph.
-            mat_target (np.array): Inner product matrix target calculated with GFNFF predicted geometry.
-            colattice_inds (list): keep track of all the valid colattice dot indices.
-            colattice_weights (list): Colattice weights for bond or angle.
-            cycle_cocycle_I (np.array): The inverse of B matrix.
-            num_nodes (int): Number of nodes of the labeled quotient graph(duplicate! not deleted due to 
-                compatibility of HTS scripts, will be deleted in future). 
-            shortest_path (list): Shortest path of the spanning graph of the labeled quotient graph.
-            spanning (list): Spanning graph of the labeled quotient graph.
-            uncovered_pair (list): Atom pairs not covered by edges of the structure graph.
-            covered_pair_lj (list): lj parameters for atom pairs covered by edges of the structure graph.
-            vbond_param_ave_covered (float): Repulsive potential well depth of atom pairs covered by edges 
-                of the structure graph. 
-            vbond_param_ave (float): Repulsive potential well depth of atom pairs not covered by edges of
-                the structure graph.
-            structure_species (list): Atom symbols of the labeled quotient graph.
-            angle_weight (float): Weight of angular terms in the object function.
-            repul (bool): Flag to indicate whether repulsive potential is considered in the object function.
-            lattice_type (int): Lattice type. 1: a=b=c, 21: a!=b=c, 22: b!=a=c, 23: c!=a=b , 3: a!=b!=c.
-            metric_tensor_std (np.array): Metric tensor of the barycentric embedding.
+    #     Args:
+    #         x (np.array): Ndarray of metric tensor components and colattice vectors.
+    #         ndim (int): Dimensionality of crystal structure corresponding to the labeled quotient graph.
+    #         order (int): Number of nodes of the labeled quotient graph.
+    #         mat_target (np.array): Inner product matrix target calculated with GFNFF predicted geometry.
+    #         colattice_inds (list): keep track of all the valid colattice dot indices.
+    #         colattice_weights (list): Colattice weights for bond or angle.
+    #         cycle_cocycle_I (np.array): The inverse of B matrix.
+    #         num_nodes (int): Number of nodes of the labeled quotient graph(duplicate! not deleted due to 
+    #             compatibility of HTS scripts, will be deleted in future). 
+    #         shortest_path (list): Shortest path of the spanning graph of the labeled quotient graph.
+    #         spanning (list): Spanning graph of the labeled quotient graph.
+    #         uncovered_pair (list): Atom pairs not covered by edges of the structure graph.
+    #         covered_pair_lj (list): lj parameters for atom pairs covered by edges of the structure graph.
+    #         vbond_param_ave_covered (float): Repulsive potential well depth of atom pairs covered by edges 
+    #             of the structure graph. 
+    #         vbond_param_ave (float): Repulsive potential well depth of atom pairs not covered by edges of
+    #             the structure graph.
+    #         structure_species (list): Atom symbols of the labeled quotient graph.
+    #         angle_weight (float): Weight of angular terms in the object function.
+    #         repul (bool): Flag to indicate whether repulsive potential is considered in the object function.
+    #         lattice_type (int): Lattice type. 1: a=b=c, 21: a!=b=c, 22: b!=a=c, 23: c!=a=b , 3: a!=b!=c.
+    #         metric_tensor_std (np.array): Metric tensor of the barycentric embedding.
 
-        Returns:
-            float: Value of the object function.
-        """
-        # if debug:
-        #     start_time = time.time()
+    #     Returns:
+    #         float: Value of the object function.
+    #     """
+    #     # if debug:
+    #     #     start_time = time.time()
 
-        # Part 1: Calculate inner_p
-        metric_tensor, cocycle_rep = self.convert_params(x, ndim, int(order - 1),lattice_type,metric_tensor_std)
-        if cocycle_rep is not None: 
-            periodic_rep = np.concatenate((cycle_rep, cocycle_rep))
-        else:
-            periodic_rep=cycle_rep
+    #     # Part 1: Calculate inner_p
+    #     metric_tensor, cocycle_rep = self.convert_params(x, ndim, int(order - 1),lattice_type,metric_tensor_std)
+    #     if cocycle_rep is not None: 
+    #         periodic_rep = np.concatenate((cycle_rep, cocycle_rep))
+    #     else:
+    #         periodic_rep=cycle_rep
         
-        lattice_arcs = cycle_cocycle_I @ periodic_rep
-        inner_p = lattice_arcs @ metric_tensor @ lattice_arcs.T
+    #     lattice_arcs = cycle_cocycle_I @ periodic_rep
+    #     inner_p = lattice_arcs @ metric_tensor @ lattice_arcs.T
         
-        square_diff = 0.0
-        epsilon_sq_length = 1e-10 # Minimum squared length for stability in LJ bond term
-        min_r_safe = 1e-7         # Minimum distance for stability in LJ uncovered pair term
+    #     square_diff = 0.0
+    #     epsilon_sq_length = 1e-10 # Minimum squared length for stability in LJ bond term
+    #     min_r_safe = 1e-7         # Minimum distance for stability in LJ uncovered pair term
 
-        # Part 2: Calculate contributions from colattice_inds (bonds and angles)
-        if colattice_inds and colattice_inds[0]: # Check if not empty
-            i_indices = np.array(colattice_inds[0], dtype=int)
-            j_indices = np.array(colattice_inds[1], dtype=int)
-            weights = np.array(colattice_weights)
+    #     # Part 2: Calculate contributions from colattice_inds (bonds and angles)
+    #     if colattice_inds and colattice_inds[0]: # Check if not empty
+    #         i_indices = np.array(colattice_inds[0], dtype=int)
+    #         j_indices = np.array(colattice_inds[1], dtype=int)
+    #         weights = np.array(colattice_weights)
 
-            inner_p_selected = inner_p[i_indices, j_indices]
-            mat_target_selected = mat_target[i_indices, j_indices]
+    #         inner_p_selected = inner_p[i_indices, j_indices]
+    #         mat_target_selected = mat_target[i_indices, j_indices]
 
-            is_bond_term = (i_indices == j_indices)
-            is_angle_term = ~is_bond_term
+    #         is_bond_term = (i_indices == j_indices)
+    #         is_angle_term = ~is_bond_term
 
-            # --- Bond terms ---
-            if np.any(is_bond_term):
-                bond_inner_p_values = inner_p_selected[is_bond_term]
-                bond_mat_target_values = mat_target_selected[is_bond_term]
+    #         # --- Bond terms ---
+    #         if np.any(is_bond_term):
+    #             bond_inner_p_values = inner_p_selected[is_bond_term]
+    #             bond_mat_target_values = mat_target_selected[is_bond_term]
                 
-                diff_sq_bonds = (bond_inner_p_values - bond_mat_target_values)**2
+    #             diff_sq_bonds = (bond_inner_p_values - bond_mat_target_values)**2
                 
-                if covered_pair_lj: # Ensure not empty
-                    edge_indices_for_bonds = i_indices[is_bond_term]
-                    # covered_pair_lj[k][1] is sigma for the k-th edge.
-                    # sigma^12 / (d^2)^6 = sigma^12 / d^12 = (sigma/d)^12
-                    sigmas_covered_pow12 = np.array([lj[1]**12 for lj in covered_pair_lj])
-                    selected_sigmas_pow12 = sigmas_covered_pow12[edge_indices_for_bonds]
+    #             if covered_pair_lj: # Ensure not empty
+    #                 edge_indices_for_bonds = i_indices[is_bond_term]
+    #                 # covered_pair_lj[k][1] is sigma for the k-th edge.
+    #                 # sigma^12 / (d^2)^6 = sigma^12 / d^12 = (sigma/d)^12
+    #                 sigmas_covered_pow12 = np.array([lj[1]**12 for lj in covered_pair_lj])
+    #                 selected_sigmas_pow12 = sigmas_covered_pow12[edge_indices_for_bonds]
                     
-                    denominator_bonds = np.maximum(bond_inner_p_values, epsilon_sq_length)**6
-                    lj_repulsive_bonds = 4 * vbond_param_ave_covered * (selected_sigmas_pow12 / denominator_bonds)
-                    square_diff += np.sum(diff_sq_bonds + lj_repulsive_bonds)
-                else:
-                    square_diff += np.sum(diff_sq_bonds)
+    #                 denominator_bonds = np.maximum(bond_inner_p_values, epsilon_sq_length)**6
+    #                 lj_repulsive_bonds = 4 * vbond_param_ave_covered * (selected_sigmas_pow12 / denominator_bonds)
+    #                 square_diff += np.sum(diff_sq_bonds + lj_repulsive_bonds)
+    #             else:
+    #                 square_diff += np.sum(diff_sq_bonds)
 
-            # --- Angle terms ---
-            if np.any(is_angle_term):
-                angle_inner_p_values = inner_p_selected[is_angle_term]
-                angle_mat_target_values = mat_target_selected[is_angle_term]
-                angle_weights_selected = weights[is_angle_term]
+    #         # --- Angle terms ---
+    #         if np.any(is_angle_term):
+    #             angle_inner_p_values = inner_p_selected[is_angle_term]
+    #             angle_mat_target_values = mat_target_selected[is_angle_term]
+    #             angle_weights_selected = weights[is_angle_term]
                 
-                diff_sq_angles = (angle_inner_p_values - angle_mat_target_values)**2
-                square_diff += np.sum(angle_weight * angle_weights_selected * diff_sq_angles)
+    #             diff_sq_angles = (angle_inner_p_values - angle_mat_target_values)**2
+    #             square_diff += np.sum(angle_weight * angle_weights_selected * diff_sq_angles)
 
-        # Part 3: Repulsive part for uncovered pairs
-        if repul and uncovered_pair: # Check if uncovered_pair is not empty
-            coordinates_temp=self.get_coordinates(lattice_arcs,num_nodes,shortest_path,spanning)
-            coordinates_temp_cart = coordinates_temp @ lattice_vectors_scaled
-            distance_matrix=self.all_distances(coordinates_temp_cart,coordinates_temp_cart)
+    #     # Part 3: Repulsive part for uncovered pairs
+    #     if repul and uncovered_pair: # Check if uncovered_pair is not empty
+    #         coordinates_temp=self.get_coordinates(lattice_arcs,num_nodes,shortest_path,spanning)
+    #         coordinates_temp_cart = coordinates_temp @ lattice_vectors_scaled
+    #         distance_matrix=self.all_distances(coordinates_temp_cart,coordinates_temp_cart)
 
-            idx1_uncovered = np.array([p[0] for p in uncovered_pair], dtype=int)
-            idx2_uncovered = np.array([p[1] for p in uncovered_pair], dtype=int)
-            r_values_uncovered = distance_matrix[idx1_uncovered, idx2_uncovered]
+    #         idx1_uncovered = np.array([p[0] for p in uncovered_pair], dtype=int)
+    #         idx2_uncovered = np.array([p[1] for p in uncovered_pair], dtype=int)
+    #         r_values_uncovered = distance_matrix[idx1_uncovered, idx2_uncovered]
 
-            r0_uncovered = np.array([lj[0] for lj in uncovered_pair_lj])
-            sigmas_uncovered = np.array([lj[1] for lj in uncovered_pair_lj])
+    #         r0_uncovered = np.array([lj[0] for lj in uncovered_pair_lj])
+    #         sigmas_uncovered = np.array([lj[1] for lj in uncovered_pair_lj])
 
-            collision_mask = (r_values_uncovered < r0_uncovered)
+    #         collision_mask = (r_values_uncovered < r0_uncovered)
             
-            if np.any(collision_mask):
-                r_colliding = r_values_uncovered[collision_mask]
-                r_colliding_safe = np.maximum(r_colliding, min_r_safe) # Avoid division by zero
-                sigmas_colliding = sigmas_uncovered[collision_mask]
+    #         if np.any(collision_mask):
+    #             r_colliding = r_values_uncovered[collision_mask]
+    #             r_colliding_safe = np.maximum(r_colliding, min_r_safe) # Avoid division by zero
+    #             sigmas_colliding = sigmas_uncovered[collision_mask]
                 
-                lj_repulsive_uncovered = 4 * vbond_param_ave * (sigmas_colliding / r_colliding_safe)**12
-                square_diff += np.sum(lj_repulsive_uncovered)
+    #             lj_repulsive_uncovered = 4 * vbond_param_ave * (sigmas_colliding / r_colliding_safe)**12
+    #             square_diff += np.sum(lj_repulsive_uncovered)
         
-        if square_diff > 10**15:
-            raise Exception
+    #     if square_diff > 10**15:
+    #         self.min_x = x
+    #         raise Exception("too large func")
+
+    #     if square_diff - self.last_val < 1e-8:
+    #         self.last_val = 0
+    #         self.min_x = x
+    #         raise Exception("func dt")
+    #     self.last_val = square_diff
         
+    #     return square_diff
+
+
+    # @numba.njit(cache=True, fastmath=True)
+    def func(
+        self, x, ndim, order, mat_target,
+        colattice_inds, colattice_weights,
+        cycle_rep, cycle_cocycle_I, num_nodes,
+        shortest_path, spanning, uncovered_pair,
+        uncovered_pair_lj, covered_pair_lj,
+        vbond_param_ave_covered, vbond_param_ave,
+        lattice_vectors_scaled, structure_species,
+        angle_weight, repul, lattice_type,
+        metric_tensor_std,
+    ):
+            # make sure the attribute always exists
+        if not hasattr(self, "min_x"):
+            self.min_x = x.copy()
+
+        # ------------------------------------------------------------------
+        # 1. metric tensor + inner-product matrix
+        metric_tensor, cocycle_rep = self.convert_params(
+            x, ndim, order - 1, lattice_type, metric_tensor_std
+        )
+
+        periodic_rep = cycle_rep if cocycle_rep is None else np.concatenate(
+            (cycle_rep, cocycle_rep)
+        )
+
+        lattice_arcs = cycle_cocycle_I @ periodic_rep
+        inner_p = lattice_arcs @ (metric_tensor @ lattice_arcs.T)  # fused gemm
+
+        # ------------------------------------------------------------------
+        square_diff = 0.0
+        if (not colattice_inds            or
+            not colattice_inds[0]         or
+            len(colattice_inds[0]) == 0):       # nothing to do → zero objective
+            return 0.0
+
+        eps_sq = 1e-10      # tiny squared length to stabilise divs
+        r_min = 1e-7        # tiny r to stabilise LJ repulsion
+
+        # ------------------------------------------------------------------
+        # 2. Bonds & angles (colattice)
+        if colattice_inds and colattice_inds[0]:
+            i_idx = np.asarray(colattice_inds[0], dtype=np.intp)
+            j_idx = np.asarray(colattice_inds[1], dtype=np.intp)
+            wgt   = np.asarray(colattice_weights, dtype=inner_p.dtype)
+
+            ip_sel  = inner_p[i_idx, j_idx]
+            tgt_sel = mat_target[i_idx, j_idx]
+
+            is_bond = i_idx == j_idx
+            if is_bond.any():
+                # --- bond terms
+                bond_ip   = ip_sel[is_bond]
+                bond_tgt  = tgt_sel[is_bond]
+                diff_sq   = np.square(bond_ip - bond_tgt)
+
+                if covered_pair_lj:
+                    # σ¹² pre-packed outside Python loop
+                    sig_pow12 = np.power(
+                        np.asarray(covered_pair_lj, dtype=float)[:, 1], 12
+                    )
+                    sigma_bond = sig_pow12[i_idx[is_bond]]
+
+                    denom = np.power(np.maximum(bond_ip, eps_sq), 6)
+                    lj_rep = 4.0 * vbond_param_ave_covered * (sigma_bond / denom)
+                    square_diff += diff_sq.sum() + lj_rep.sum()
+                else:
+                    square_diff += diff_sq.sum()
+
+            # --- angle terms
+            if (~is_bond).any():
+                ang_ip   = ip_sel[~is_bond]
+                ang_tgt  = tgt_sel[~is_bond]
+                ang_w    = wgt[~is_bond]
+                diff_sq  = np.square(ang_ip - ang_tgt)
+                square_diff += (angle_weight * ang_w * diff_sq).sum()
+
+        # ------------------------------------------------------------------
+        # 3. Uncovered pairs: LJ repulsion only
+        if repul and uncovered_pair:
+            # vectorise helpers beforehand
+            coords_frac = self.get_coordinates(
+                lattice_arcs, num_nodes, shortest_path, spanning
+            )
+            coords_cart = coords_frac @ lattice_vectors_scaled
+
+            # squared distances with broadcasting trick (faster than two GEMMs)
+            diff = coords_cart[:, None, :] - coords_cart[None, :, :]
+            dist = np.linalg.norm(diff, axis=-1)
+
+            idx1 = np.fromiter((p[0] for p in uncovered_pair), dtype=np.intp)
+            idx2 = np.fromiter((p[1] for p in uncovered_pair), dtype=np.intp)
+
+            r    = dist[idx1, idx2]
+            lj   = np.asarray(uncovered_pair_lj, dtype=float)
+            r0   = lj[:, 0]
+            sig  = lj[:, 1]
+
+            mask = r < r0
+            if mask.any():
+                r_safe = np.maximum(r[mask], r_min)
+                sig_m  = sig[mask]
+                square_diff += np.sum(
+                    4.0 * vbond_param_ave * np.power(sig_m / r_safe, 12)
+                )
+
+        # ------------------------------------------------------------------
+        if square_diff > 1e15:
+            self.min_x = x
+            raise RuntimeError("too large func")
+
+        if square_diff - self.last_val < 1e-8:
+            self.last_val = 0.0
+            self.min_x = x
+            raise RuntimeError("func dt")
+
+        self.last_val = square_diff
         return square_diff
+
 
     def func_check(self,x,ndim,order,mat_target,colattice_inds,colattice_weights,cycle_rep,cycle_cocycle_I,num_nodes,shortest_path,spanning,uncovered_pair,uncovered_pair_lj,covered_pair_lj,vbond_param_ave_covered,vbond_param_ave,lattice_vectors_scaled,structure_species,angle_weight,repul,lattice_type,metric_tensor_std):
         """Objective function: sum squared differences between the inner products of the GFN-FF predicted 
@@ -2110,12 +2243,15 @@ class SLICES:
                 start_time = end_time
                 print(f"[12] Elapsed time: {elapsed:.4f} seconds")
 
-            x=fmin_l_bfgs_b(self.func, x, fprime=None, args= \
-            (net.ndim,net.order,inner_p_target,colattice_inds,colattice_weights,net.cycle_rep,net.cycle_cocycle_I, \
-            num_nodes,shortest_path,spanning,uncovered_pair,uncovered_pair_lj,covered_pair_lj,vbond_param_ave_covered,vbond_param_ave, \
-            lattice_vectors_scaled,atom_symbols,angle_weight,repul,lattice_type,metric_tensor_std), \
-            approx_grad=True, bounds=bounds, m=10, factr=10000000.0, pgtol=1e-05, \
-            epsilon=1e-08, iprint=1 if debug else -1, maxfun=15000, maxiter=15000, disp=None, callback=None, maxls=20)
+            try:
+                x=fmin_l_bfgs_b(self.func, x, fprime=None, args= \
+                (net.ndim,net.order,inner_p_target,colattice_inds,colattice_weights,net.cycle_rep,net.cycle_cocycle_I, \
+                num_nodes,shortest_path,spanning,uncovered_pair,uncovered_pair_lj,covered_pair_lj,vbond_param_ave_covered,vbond_param_ave, \
+                lattice_vectors_scaled,atom_symbols,angle_weight,repul,lattice_type,metric_tensor_std), \
+                approx_grad=True, bounds=bounds, m=10, factr=10000000.0, pgtol=1e-05, \
+                epsilon=1e-08, iprint=1 if debug else -1, maxfun=15000, maxiter=15000, disp=None, callback=None, maxls=20)
+            except Exception:
+                x = [self.min_x]
 
             if debug:
                 end_time = time.time()    # Get time after code runs
@@ -2152,7 +2288,7 @@ class SLICES:
             start_time = end_time
             print(f"[15] Elapsed time: {elapsed:.4f} seconds")
 
-        self.can_relax = True
+        # self.can_relax = True
         if self.can_relax:
             try:
                 if num_nodes <= 20:
