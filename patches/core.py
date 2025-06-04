@@ -68,7 +68,7 @@ def function_timeout(seconds: int):
         @contextmanager
         def time_limit(seconds_):
             def signal_handler(signum, frame):  # noqa
-                raise TimeoutException("Timed out!")  #TimeoutException
+                raise Exception("Timed out!")  #TimeoutException
             signal.signal(signal.SIGALRM, signal_handler)
             signal.alarm(seconds_)
             try:

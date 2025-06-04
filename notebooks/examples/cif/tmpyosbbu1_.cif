@@ -1,0 +1,38 @@
+# generated using pymatgen
+data_Na3MnCoNiO6
+_symmetry_space_group_name_H-M   'P 1'
+_cell_length_a   8.01798164
+_cell_length_b   8.01798164
+_cell_length_c   5.62283181
+_cell_angle_alpha   72.28593487
+_cell_angle_beta   107.71406513
+_cell_angle_gamma   158.32355683
+_symmetry_Int_Tables_number   1
+_chemical_formula_structural   Na3MnCoNiO6
+_chemical_formula_sum   'Na3 Mn1 Co1 Ni1 O6'
+_cell_volume   126.94968591
+_cell_formula_units_Z   1
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Na  Na0  1  0.00405244  0.99594756  0.00486042  1
+  Na  Na1  1  0.34658552  0.65341448  0.00947634  1
+  Na  Na2  1  0.67681648  0.32318352  0.00536263  1
+  Mn  Mn3  1  0.84063682  0.15936318  0.50601707  1
+  Co  Co4  1  0.51487083  0.48512917  0.51029383  1
+  Ni  Ni5  1  0.17331320  0.82668680  0.50372864  1
+  O  O6  1  0.41415621  0.58584379  0.69671233  1
+  O  O7  1  0.76276190  0.23723810  0.70774662  1
+  O  O8  1  0.08431777  0.91568223  0.71588008  1
+  O  O9  1  0.27193569  0.72806431  0.30830467  1
+  O  O10  1  0.59260757  0.40739243  0.29679474  1
+  O  O11  1  0.92729567  0.07270433  0.31208430  1
