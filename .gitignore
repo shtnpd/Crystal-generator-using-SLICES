@@ -1,3 +1,11 @@
 **/__pycache__/
 tmp/
 data/raw/sAlex/*
+**/inference-results/*
+**/checkpoints/*
+**/logs/*
+**/train-data/*
+**/data/*
+**/*.csv
+**/*.parquet
+notebooks/*.txt

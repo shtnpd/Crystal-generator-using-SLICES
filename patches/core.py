@@ -87,7 +87,7 @@ def function_timeout(seconds: int):
 class SLICES:
     """Invertible Crystal Representation (SLICES and labeled quotient graph)
     """    
-    def __init__(self, atom_types=None, edge_indices=None, to_jimages=None, graph_method='econnn', check_results=False, optimizer="BFGS",fmax=0.2,steps=100,relax_model="m3gnet"):
+    def __init__(self, atom_types=None, edge_indices=None, to_jimages=None, graph_method='econnn', check_results=False, optimizer="BFGS",fmax=0.2,steps=100,relax_model="m3gnet", requires_min=True):
         """__init__
 
         Args:
@@ -107,6 +107,7 @@ class SLICES:
         gc.collect()
         # self.can_relax = relax_model != None
         self.can_relax = False
+        self.requires_min = requires_min
         self.last_val = 0
         self.atom_types = atom_types
         self.edge_indices = edge_indices
@@ -2243,13 +2244,14 @@ class SLICES:
                 start_time = end_time
                 print(f"[12] Elapsed time: {elapsed:.4f} seconds")
 
+            # if self.requires_min:
             try:
                 x=fmin_l_bfgs_b(self.func, x, fprime=None, args= \
                 (net.ndim,net.order,inner_p_target,colattice_inds,colattice_weights,net.cycle_rep,net.cycle_cocycle_I, \
                 num_nodes,shortest_path,spanning,uncovered_pair,uncovered_pair_lj,covered_pair_lj,vbond_param_ave_covered,vbond_param_ave, \
                 lattice_vectors_scaled,atom_symbols,angle_weight,repul,lattice_type,metric_tensor_std), \
                 approx_grad=True, bounds=bounds, m=10, factr=10000000.0, pgtol=1e-05, \
-                epsilon=1e-08, iprint=1 if debug else -1, maxfun=15000, maxiter=15000, disp=None, callback=None, maxls=20)
+                epsilon=1e-08, iprint=1 if debug else -1, maxfun=15000, maxiter=15000 if self.requires_min else 5, disp=None, callback=None, maxls=20)
             except Exception:
                 x = [self.min_x]
 
