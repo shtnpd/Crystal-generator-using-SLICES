@@ -1,3 +1,9 @@
+# This file is a modified version of code derived from SLICES (https://github.com/xiaohang007/SLICES)
+# SLICES is licensed under the GNU Lesser General Public License (LGPL) v2.1.
+# The modifications in this file are also subject to the terms of the LGPL v2.1.
+#
+# SPDX-License-Identifier: LGPL-2.1
+
 # -*- coding: utf-8 -*-
 # Hang Xiao 2023.04
 # xiaohang07@live.cn
