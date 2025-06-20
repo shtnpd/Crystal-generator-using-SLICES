@@ -1,0 +1,4 @@
+train-data.txt
+finetune_gpt2_slices_5-checkpoint-1600.txt
+finetune_gpt2_slices_5-checkpoint-1800.txt
+pretrain_gpt2_slices_2-checkpoint-5000.txt

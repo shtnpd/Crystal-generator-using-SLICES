@@ -9,3 +9,4 @@ data/raw/sAlex/*
 **/*.csv
 **/*.parquet
 notebooks/*.txt
+*.tar.gz

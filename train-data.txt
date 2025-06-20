@@ -1,0 +1,14 @@
+data/processed
+notebooks/data/processed
+notebooks/train-data
+notebooks/failed-tune.txt
+notebooks/generated_slices.txt
+notebooks/mp-20-slices.txt
+notebooks/mp20_failed.csv
+notebooks/mp20-results.csv
+notebooks/results.txt
+notebooks/salex_failed.parquet
+notebooks/test-inference-100-samples.txt
+notebooks/test-inference-success-2.txt
+notebooks/test-inference-success-3.txt
+notebooks/test-inference-success.txt
